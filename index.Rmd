@@ -1,0 +1,378 @@
+---
+title: "State Database Sharing and the Federal Lifeline Program: COMM 621 Project (Marina Levy)"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    source_code: embed
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+```
+
+Overview
+===================================== 
+
+Column {data-width=650}
+-------------------------------------
+
+### Overview
+
+#### Introduction
+    
+[Lifeline](https://www.fcc.gov/lifeline-consumers) is a Federal Communications Commission (FCC) program meant to help make telecommunications services more accessible for low-income households in the United States. It offers consumers a monthly discount on their qualifying telecommunications services, which can involve phone service, broadband service, or combinations of the two. 
+Prior to 2020, verifying whether households were eligible to apply for and receive the Lifeline discount was mostly up to service providers. [But the FCC eventually released a centralized system](https://www.gao.gov/products/gao-21-235), called the [National Verifier](https://www.usac.org/lifeline/national-verifier/), where households from every state would have to apply in order to receive and maintain Lifeline service. Part of the idea behind the National Verifier was that the application process would be more seamless and rapid for consumers, because states would share access to their databases with the Federal Government, which would in theory allow for quick, automatic eligibility checks for households, allowing them to access the Lifeline discount faster and with fewer hurdles. 
+
+Although the National Verifier has been fully rolled out, states have had, in reality, varying levels of data sharing collaboration with the Federal Government. Some states, like Massachusetts, have not established automated connections to their data sources, while other states like Colorado have. If a consumer is not matched automatically through a database connection, then they’re required to provide additional documentation to the National Verifier for manual review. In theory, this could mean that households in states without data connections could encounter higher barriers to the program.
+
+#### Research Question
+
+**Are there differences in the success of Lifeline program enrollments for households in states with and without automated data sharing with the FCC?** In this case, success would be defined as an eligible Lifeline application being approved, and not rejected. Households in states without automated data sharing agreements would, in theory, have to provide documentation more often, which could increase attrition and decrease successful enrollments. On the other hand, this will probably depend on how households generally qualify for Lifeline—for example, if they qualify through a federal program such as Medicare or Medicaid, the federal government might already have their information in the system. And, if the data sharing agreements are flawed or insufficient, there might not be a difference at all in the rate of manual document verification requirements.
+
+For this project, the independent variable to analyze will be the degree of data sharing happening between states and the FCC. The dependent variable will be the proportion of successful Lifeline applications in a given time period. 
+
+#### Research Design
+
+I plan to gather and aggregate Lifeline enrollment information for 2021. This will include the status of state database connections (as well as any additional background or particularities that a state might have with regards to their data sharing agreements), as well as the number of Lifeline applications received in each state. This information is provided by the Universal Service Administrative Company (USAC) on a quarterly basis, and is broken out by whether applications have: qualified automatically; qualified after submitting documentation; unqualified because documents were not provided; or unqualified because documents were insufficient. Since the information is provided quarterly, I think it will make sense to aggregate it at the yearly level for 2021. I will focus on 2021 because the National Verifier was rolled out in 2020 during different months for different states, which could add noise to the numbers.
+
+
+Column {data-width=350}
+-------------------------------------
+
+### Lifeline Enrollment Stats (United States Totals)
+
+```{r}
+library(RSocrata)
+library(tidyverse)
+library(plotly)
+
+#Bring in data from Socrata API
+  #df <- read.socrata("https://opendata.usac.org/resource/tfxa-gt3x.json")
+#  df <- df %>%
+#       filter(support_year >= 2018) %>% 
+#       select(sac_name,
+#            support_year,
+#            support_month,
+#            support_month_date_format,
+#            technology_type,
+#            service_type,
+#            submission_type,
+#            subscriber_count)
+# 
+# totals <- df %>%
+#           mutate(subscriber_count = as.numeric(subscriber_count)) %>%
+#           group_by(support_year) %>%
+#           summarise(subscribers = sum(subscriber_count))
+#saveRDS(df, file = "usac_df.rds")
+#saveRDS(totals, file = "usac_totals.rds")
+
+totals <- readRDS("C:/Users/Marina/OneDrive/Documents/DACSS/COMM 621/Comm621Spring2022/usac_totals.rds")
+
+options(scipen=999)
+
+p <- totals %>%
+      filter(support_year < 2022) %>%
+      rename(`Total Subscribers` = subscribers,
+             `Year` = support_year) %>%
+      ggplot(aes(x = `Year`, y = `Total Subscribers`)) +
+          geom_col() +
+          theme_classic() 
+
+ggplotly(p)
+```
+   
+Data
+=====================================     
+
+Row 
+-------------------------------------
+### % of Rejected Applications
+    
+```{r}
+library(readxl)
+library(USAboundaries)
+
+#1: Bring in relevant info from USAC PDFs
+
+#Read in files
+program_eligibility <- read_excel("C:/Users/Marina/OneDrive/Documents/DACSS/COMM 621/Comm621Spring2022/National Verifier/tabula-2021-National-Verifier-Annual-Eligibility-Data.xlsx", 
+                                  sheet = "Program Eligibility")
+
+overall_qualification <- read_excel("C:/Users/Marina/OneDrive/Documents/DACSS/COMM 621/Comm621Spring2022/National Verifier/tabula-2021-National-Verifier-Annual-Eligibility-Data.xlsx", 
+                                    sheet = "Overall Qualification")
+
+data_sharing <- read_csv("C:/Users/Marina/OneDrive/Documents/DACSS/COMM 621/Comm621Spring2022/National Verifier/tabula-National-Verifier-Annual-Report-and-Data-January-2022.csv")
+
+participation_rates <- read_excel("C:/Users/Marina/OneDrive/Documents/DACSS/COMM 621/Comm621Spring2022/National Verifier/Lifeline-Participation-Rate.xlsx")
+
+state_codes <- USAboundaries::state_codes
+
+#Check for consistency
+program_eligibility <- program_eligibility %>%
+                        replace(is.na(.), 0) %>%
+                        mutate(check_total = approved_automatically +
+                                              approved_with_documents +
+                                              not_approved_docs_not_sufficient +
+                                              not_approved_docs_not_provided) %>%
+                        mutate(compare_total = check_total - total)
+
+#Calculate proportions
+program_eligibility <- program_eligibility %>%
+                        select(-check_total, -compare_total) %>%
+                        mutate(pct_approved_automatically = approved_automatically / total,
+                               pct_approved_withdocs = approved_with_documents / total,
+                               pct_not_approved = (not_approved_docs_not_sufficient +
+                                                     not_approved_docs_not_provided) / total)
+
+
+#Compare states
+theme_set(theme_classic())
+library(scales)
+
+#Rejected 
+program_eligibility$state <- factor(program_eligibility$state, levels = program_eligibility$state[order(program_eligibility$pct_not_approved)])
+
+#Reshape data sharing dataframe
+#unique(data_sharing$`Automated Data Connections Established`)
+#Options: FPHA, CMS, SNAP, Medicaid, SSI
+data_sharing <- data_sharing %>%
+                mutate(fpha = str_detect(`Automated Data Connections Established`, "FPHA"),
+                       cms = str_detect(`Automated Data Connections Established`, "CMS"),
+                       snap = str_detect(`Automated Data Connections Established`, "SNAP"),
+                       medicaid = str_detect(`Automated Data Connections Established`, "Medicaid"),
+                       ssi = str_detect(`Automated Data Connections Established`, "SSI")) %>%
+                select(state = State,
+                       state_connection = `Connection to State Data Source?`,
+                       applications_2021 = `Lifeline Applications Received in 2021`,
+                       fpha, cms, snap, medicaid, ssi)
+#Remove total
+data_sharing <- data_sharing %>% filter(state != "TOTAL")
+
+#Add state abbrev
+state_codes <- state_codes %>% select(state = state_name,
+                                      state_abbr)
+
+data_sharing <- left_join(data_sharing, state_codes, by="state")
+
+#Manually add missing ones
+#table(is.na(data_sharing$state_abbr))
+data_sharing$state_abbr <- ifelse(data_sharing$state == "America Samoa", "AS", data_sharing$state_abbr)
+data_sharing$state_abbr <- ifelse(data_sharing$state == "Northern Mariana \rIslands", "MP", data_sharing$state_abbr)
+
+#Add eligible households data
+state_codes <- state_codes %>%
+                mutate(state = toupper(state))
+
+participation_rates <- participation_rates %>%
+                        rename(state = State,
+                               eligible_hhs = `2020 ACS Lifeline Eligible Households`)
+
+participation_rates <- participation_rates %>%
+                        filter(!is.na(eligible_hhs)) %>%
+                        filter(state != "TOTAL")
+
+participation_rates <- left_join(participation_rates, state_codes, by="state")
+
+participation_rates$state <- ifelse(participation_rates$state == "PUERTO RICO2", "PUERTO RICO", participation_rates$state)
+participation_rates$state_abbr <- ifelse(participation_rates$state == "PUERTO RICO", "PR", participation_rates$state_abbr)
+
+participation_rates <- participation_rates %>% select(state_abbr, eligible_hhs)
+
+data_sharing <- left_join(data_sharing, participation_rates, by = "state_abbr")
+
+#add program eligibility info
+program_eligibility <- program_eligibility %>%
+                        filter(state != "Total") %>%
+                        rename(total_applications = total)
+program_eligibility <- program_eligibility %>% rename(state_abbr = state)
+
+data_sharing <- left_join(data_sharing, program_eligibility, by="state_abbr")
+
+#Texas seems to not have provided information
+#Anyway: calculate application rate (based on eligible households)
+
+#table(data_sharing$applications_2021 == data_sharing$total_applications) #good
+#2 sources of data that match on application number, can use either
+
+data_sharing$application_rate <- round(data_sharing$total_applications / data_sharing$eligible_hhs, 2)
+
+#Missing participation rate/eligibility info for some territories. 
+#"Guam, the Northern Mariana Islands, and the U.S. Virgin Islands are data deficient (because they are not included in the American Community Survey),"
+
+#I need a measure for what % of the population in each area is eligible
+state_pop <- read_excel("C:/Users/Marina/OneDrive/Documents/DACSS/COMM 621/Comm621Spring2022/National Verifier/population-change-data-table.xlsx", 
+                                                        skip = 1)
+state_pop <- state_pop %>%
+              select(state = `...1`, 
+                     population_2020 = `Resident Population 2020 Census`) %>%
+              mutate(state = toupper(state))
+
+state_pop <- left_join(state_pop, state_codes, by="state")
+state_pop <- state_pop %>% select(-state)
+data_sharing <- left_join(data_sharing, state_pop, by="state_abbr")
+
+data_sharing <- data_sharing %>%
+                mutate(eligibility_rate = round(eligible_hhs / population_2020, 2))
+
+copy.df <- data_sharing
+copy.df$state <- factor(copy.df$state, levels = copy.df$state[order(copy.df$pct_not_approved)])
+
+p2 <-    copy.df %>%
+      filter(approved_automatically > 0 & state != "Total") %>%
+      ggplot(aes(x=state, y=pct_not_approved, color=factor(state_connection))) + 
+      #geom_point(col="tomato2", size=3) +   # Draw points
+      #geom_point(aes(colour = factor(state_connection)), size = 2) +
+      geom_point() + 
+      labs( color = "State Connection?" ) +
+      #geom_point(aes(size = approved_automatically)) +
+      # geom_segment(aes(x=state, 
+      #                  xend=state, 
+      #                  y=min(pct_approved_automatically), 
+      #                  yend=max(pct_approved_automatically)), 
+      #              linetype="dashed", 
+      #              size=0.1) +   # Draw dashed lines
+      labs(title="Distribution of Rejected Applications Across States", 
+           subtitle="State vs. Pct. of Applications Not Approved", 
+           caption="source: USAC") +  
+      xlab("State") +
+      ylab("Percent of Applications Rejected") +
+      theme(legend.position="bottom") +
+      coord_flip()
+
+#p2
+ggplotly(p2, width = 600)
+
+```
+
+Row {.tabset .tabset-fade}
+-------------------------------------    
+### Pre-Processed Data
+
+```{r}
+library(DT)
+
+data_sharing %>%
+  mutate(pct_not_approved = round(pct_not_approved, 2)) %>%
+  select(`State` = state,
+         `State Database Connection?` = state_connection,
+         `Lifeline Applications in 2021` = applications_2021,
+         `FPHA Connection` = fpha,
+         `CMS Connection` = cms,
+         `SNAP Connection` = snap,
+         `Medicaid Connection` = medicaid,
+         `SSI Connection` = ssi,
+         `Number of Eligible Households` = eligible_hhs,
+         `Approved Automatically` = approved_automatically,
+         `Approved With Documents` = approved_with_documents,
+         `Total Applications` = total_applications,
+         `Percent Not Approved` = pct_not_approved,
+         `Application Rate` = application_rate,
+         `Population 2020` = population_2020,
+         `Eligibility Rate` = eligibility_rate
+         ) %>%
+  datatable()
+
+```
+
+### Description
+
+#### Overview of the Data and How I Processed It
+The Universal Service Administrative Company (USAC) is in charge of administering the Lifeline program on behalf of the FCC. As part of their service, USAC releases reports about the National Verifier, breaking down application information by state/US territory. The reports show, for each state and territory:
+
+* How many total Lifeline applications were received in a year
+* How many of those applications qualified automatically
+* How many qualified with documents
+* How many did not qualify- and whether it was because information was not provided, documents were not sufficient, or documents were not provided
+
+I combined this information with additional participation data provided (separately) by the FCC, which estimates Lifeline participation rates based on how many people in a state are eligible for certain welfare programs per the American Community Survey. Unfortunately, ACS data was unavailable for US territories other than Puerto Rico.
+
+I also added state connection information obtained from USAC, which details not just whether a state has established a database connection with USAC, but it also explicitly shows what connections USAC has with each state. Unfortunately, the information provided by USAC appeared to be somewhat contradictory, and I will need to reach out to them to ask for clarification.
+
+[For example, USAC states that](https://www.usac.org/wp-content/uploads/lifeline/documents/nv/reports/National-Verifier-Annual-Report-and-Data-January-2022.pdf):
+
+> In 2018, USAC built a connection to the U.S. Department of Housing and 
+Urban Development (HUD), providing real-time Federal Public Housing Authority (FPHA) 
+participation results in all 50 states, the District of Columbia, and the U.S. territories.
+
+Yet 6 states (California, Georgia, Oregon, Texas, Virginia, and Washington) were subsequently not listed by USAC as having an FPHA connection.
+
+Finally, I added population information in order to understand and control for what % of a state's total population is eligible for Lifeline services.
+
+Analysis
+=====================================     
+
+Row {.tabset .tabset-fade}
+-------------------------------------    
+### Linear Regression
+
+I started off simple, by running a simple linear regression with the % of applications not approved as the dependent variable, and whether a state connection was established or not (1 or 0) as the independent variable.
+    
+```{r}
+#Prepare for initial analysis
+data_sharing <- data_sharing %>%
+                mutate(state_connection = ifelse(state_connection == "No", 0, 1))
+
+#A simple linear regression with no controls shows a strong association
+fit1 <- lm(pct_not_approved ~ state_connection, data=data_sharing)
+summary(fit1)
+
+```
+
+This simple model suggests that there is a strong association between these two variables, with states flagged as having a database connection having about a 9% lower rejection rate relative to states without a database connection.
+
+Next, I look at the same regression with one added control: a state's eligibility rate (which, as explained in the Data tab, I've calculated by dividing the total number of eligible households by the total population in a state).
+
+```{r}
+#Add control for what % of population is eligible
+fit2 <- lm(pct_not_approved ~ state_connection + eligibility_rate, data=data_sharing)
+summary(fit2)
+```
+
+Reading USAC's description of their own data more carefully, I conclude that both their `fpha` and their `cms` flag reflect federal databases that (in theory) should grant USAC information for people from every state. So I add those two variables as controls, since they represent federal access to a federal database.
+
+```{r}
+#Add control for federal databases (FPHA + CMS) connection
+fit3 <- lm(pct_not_approved ~ state_connection + eligibility_rate + fpha + cms, data=data_sharing)
+summary(fit3)
+```
+
+Ultimately, I concluded that the `medicaid` flag indicates specific instances of states sharing their medicaid state database with USAC. In other words, instances where `medicaid = TRUE` represent one type of state data sharing with the federal government.
+
+It turns out that if you regress rejection rate on state database connection status, and control for Medicaid, the state database connection loses all significance because the effect is driven entirely by one specific kind of connection (yes, Medicaid!)
+
+So I think a more honest linear model will look at the relationship between application rejection rate and Medicaid state sharing status:
+
+```{r}
+#Add control for specific state databases
+fit4 <- lm(pct_not_approved ~ medicaid + eligibility_rate + fpha + cms, data=data_sharing, na.action = na.exclude)
+summary(fit4)
+```
+
+When we look at it this way, we find that sharing access to a state _Medicaid_ database, specifically, is associated with about an 8% drop in rejections.
+
+```{r}
+# ggplot(data_sharing, aes(medicaid, pct_not_approved)) + 
+#   geom_point() + 
+#   geom_abline(slope = coef(fit4)[["medicaidTRUE"]], 
+#               intercept = coef(fit4)[["(Intercept)"]]) +
+#   theme_minimal() +
+#   labs(x='Medicaid Data Sharing (True or False)', y='% Applications not Approved', title='Linear Regression Plot') +
+#   theme(plot.title = element_text(hjust=0.5, size=20, face='bold')) 
+
+```
+
+
+### Next Steps
+
+This is a great starting point for further analysis. On a second iteration of this project, I would want to:
+
+* Figure out a way to not exclude the US territories missing participation and eligibility information. It's unfortunately that the ACS does not provide this information for US territories, but when enough 2020 Decennial Census data is released, perhaps I'll be able to re-add them
+* Add additional controls for socio-demographic state characteristics, like distributions around race, income, and age across states, and also information about broadband and phone adoption
+* Contact USAC to gain a better understanding of their data. I mentioned some of the confusion surrounding their claims in the Data tab, but additionally, there are special hiccups involving Texas, California, and Oregon, which apparently (according to USAC) have special processes in place just for them
+* Get more granular data! I doubt application-level information will ever become available, but at the very least, it would be good to get a breakdown by state of how applications ultimately qualify for approval (i.e, through which eligibility method? Medicaid? SNAP?)
+
+At this stage, a simple regression isn't much of anything, nor should it be used to prescribe anything to any state. Still, it's an interesting possibility to consider. There's a chance that people in a state might benefit from the state allowing limited data sharing of Medicaid participation, if households in the state are seeking Lifeline benefits.
+
